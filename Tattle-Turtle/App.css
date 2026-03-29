@@ -1,0 +1,13 @@
+.volume-bar {
+  opacity: 0.2;
+  height: 0.75rem;
+}
+.volume-bar-active {
+  opacity: 0.8;
+}
+.volume-bar-tall {
+  height: 2.5rem;
+}
+.volume-bar-short {
+  height: 0.75rem;
+}

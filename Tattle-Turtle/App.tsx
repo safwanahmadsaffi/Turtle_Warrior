@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import './App.css';
 import { GoogleGenAI, LiveServerMessage, Modality } from '@google/genai';
 import {
   ConversationEvent,
@@ -612,17 +613,28 @@ export default function App() {
       const sessionToken = liveSessionTokenRef.current + 1;
       liveSessionTokenRef.current = sessionToken;
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      });
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        });
+      } catch (err) {
+        let message = 'Microphone access denied or unavailable.';
+        if (err && typeof err === 'object' && 'message' in err) {
+          message += `\n${err.message}`;
+        }
+        setError(message + '\nPlease check your browser settings and allow microphone access.');
+        return;
+      }
       mediaStreamRef.current = stream;
 
       setState((prev) => ({ ...prev, step: 'VOICE_CHAT' }));
 
+      // Restore to pre-API-setup: use hardcoded API key and model (for demo/legacy)
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       inputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({
         sampleRate: 16000,
@@ -642,7 +654,7 @@ export default function App() {
       });
 
       sessionPromiseRef.current = ai.live.connect({
-        model: 'gemini-2.5-flash-native-audio-preview-12-2025',
+        model: process.env.GEMINI_MODEL || 'gemini-2.5-flash-native-audio-preview-12-2025',
         callbacks: {
           onopen: () => {
             if (sessionToken !== liveSessionTokenRef.current || isEndingSessionRef.current) {
@@ -1182,12 +1194,11 @@ export default function App() {
                         key={i}
                         className={`w-2 rounded-full transition-all duration-75 ${
                           isSpeaking ? 'bg-[var(--warm-sunshine)]' : 'bg-[var(--sky-blue)]'
+                        } volume-bar ${
+                          (volume > i * 15 || isSpeaking) ? 'volume-bar-active' : 'volume-bar-inactive'
+                        } ${
+                          (volume > i * 15 || (isSpeaking && Math.random() > 0.5)) ? 'volume-bar-tall' : 'volume-bar-short'
                         }`}
-                        style={{
-                          opacity: volume > i * 15 || isSpeaking ? 0.8 : 0.2,
-                          height:
-                            volume > i * 15 || (isSpeaking && Math.random() > 0.5) ? '2.5rem' : '0.75rem',
-                        }}
                       />
                     ))}
                   </div>
