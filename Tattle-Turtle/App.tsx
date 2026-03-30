@@ -1,3 +1,115 @@
+// --- Speech-to-Speech and Parent Summary Integration ---
+// Backend endpoints
+const SPEECH_API_BASE = 'http://localhost:5000';
+
+// Send audio (base64) to backend for speech-to-text
+async function speechToText(audioBase64: string): Promise<string> {
+  const res = await fetch(`${SPEECH_API_BASE}/speech-to-text`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ audioContent: audioBase64 }),
+  });
+  const data = await res.json();
+  return data.results?.[0]?.alternatives?.[0]?.transcript || '';
+}
+
+// Send text to backend for text-to-speech
+async function textToSpeech(text: string): Promise<string> {
+  const res = await fetch(`${SPEECH_API_BASE}/text-to-speech`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  });
+  const data = await res.json();
+  return data.audioContent; // base64-encoded audio
+}
+
+// Play base64-encoded MP3 audio
+async function playBase64Audio(base64Audio: string) {
+  const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+  const audioData = Uint8Array.from(atob(base64Audio), c => c.charCodeAt(0));
+  const audioBuffer = await audioCtx.decodeAudioData(audioData.buffer);
+  const source = audioCtx.createBufferSource();
+  source.buffer = audioBuffer;
+  source.connect(audioCtx.destination);
+  source.start();
+}
+
+// Generate parent summary from conversation (demo: use conversationHistoryRef)
+async function generateParentSummaryFromConversation() {
+  // Here you could POST to a backend, or use your existing logic
+  // For demo, just use the last conversation
+  const summary = conversationHistoryRef.current || 'No conversation yet.';
+  setLiveParentSummary({
+    readingMaterial: {
+      title: 'Conversation Summary',
+      intro: summary,
+      quickRead: summary,
+      tips: ['Share with your child', 'Encourage open communication'],
+      parentScript: 'Thank you for sharing!'
+    },
+    activity: {
+      title: 'Reflect Together',
+      durationMinutes: 5,
+      materials: ['None'],
+      steps: ['Talk about the conversation', 'Ask how your child felt'],
+      connectionQuestion: 'What did you learn today?'
+    },
+    activities: [],
+    bookRecommendations: [],
+    growthMoment: {
+      headline: 'Growth Moment',
+      celebration: 'Your child shared their thoughts!',
+      skillsPracticed: ['Communication'],
+      brightSpots: ['Open sharing'],
+      encouragement: 'Keep talking!'
+    },
+    weekCovered: new Date().toLocaleDateString(),
+    generatedAt: new Date().toISOString(),
+  });
+  setShowLiveParentSummary(true);
+}
+      {/* --- DEMO: Speech-to-Speech and Parent Summary Buttons --- */}
+      <div className="flex flex-col gap-4 my-8">
+        <button
+          className="bubbly-button bg-[var(--sky-blue)] text-white text-xl px-6 py-3"
+          onClick={async () => {
+            // Demo: Record 3 seconds, send to backend, alert transcript
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const mediaRecorder = new MediaRecorder(stream);
+            let chunks: BlobPart[] = [];
+            mediaRecorder.ondataavailable = e => chunks.push(e.data);
+            mediaRecorder.onstop = async () => {
+              const blob = new Blob(chunks, { type: 'audio/wav' });
+              const arrayBuffer = await blob.arrayBuffer();
+              const base64 = encode(new Uint8Array(arrayBuffer));
+              const transcript = await speechToText(base64);
+              alert('Transcript: ' + transcript);
+            };
+            mediaRecorder.start();
+            setTimeout(() => mediaRecorder.stop(), 3000);
+          }}
+        >
+          🎤 Demo: Record & Transcribe
+        </button>
+        <button
+          className="bubbly-button bg-[var(--gentle-leaf)] text-white text-xl px-6 py-3"
+          onClick={async () => {
+            const text = prompt('Enter text to speak:') || '';
+            if (!text) return;
+            const base64Audio = await textToSpeech(text);
+            await playBase64Audio(base64Audio);
+          }}
+        >
+          🗣️ Demo: Speak Text
+        </button>
+        <button
+          className="bubbly-button bg-[var(--soft-coral)] text-white text-xl px-6 py-3"
+          onClick={generateParentSummaryFromConversation}
+        >
+          📋 Generate Parent Summary from Conversation
+        </button>
+      </div>
 import React, { useEffect, useRef, useState } from 'react';
 import './App.css';
 import { GoogleGenAI, LiveServerMessage, Modality } from '@google/genai';
@@ -883,6 +995,8 @@ export default function App() {
       }
 
       setState((prev) => ({ ...prev, step: 'RESULTS', response }));
+      // Automatically generate parent summary after conversation ends
+      await generateParentSummaryFromConversation();
     } catch (error) {
       console.warn('[ConversationSummaryFallback]', error);
 
@@ -934,6 +1048,8 @@ export default function App() {
       void generateLiveParentSummary('CONVERSATION_END');
 
       setState((prev) => ({ ...prev, step: 'RESULTS', response: fallbackResponse }));
+      // Automatically generate parent summary after conversation ends (fallback)
+      await generateParentSummaryFromConversation();
     }
   };
 
